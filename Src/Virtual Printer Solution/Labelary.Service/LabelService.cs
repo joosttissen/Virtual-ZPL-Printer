@@ -139,6 +139,15 @@ namespace Labelary.Service
 				{
 					try
 					{
+						//
+						// Skip labels that have no drawable elements (e.g., configuration-only labels).
+						//
+						if (analyzeInfo.LabelInfos[i].ZplElements == null || analyzeInfo.LabelInfos[i].ZplElements.Count == 0)
+						{
+							this.Logger.LogDebug("Skipping label {index} of {total} because it has no drawable elements.", i, totalLabels);
+							continue;
+						}
+
 						byte[] imageData = drawer.Draw(
 							analyzeInfo.LabelInfos[i].ZplElements,
 							labelWidthMm,
