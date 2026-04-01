@@ -31,6 +31,8 @@ namespace Labelary.Service
 {
 	public class LabelService(ILogger<LabelService> logger, ILabelServiceConfiguration labelServiceConfiguration, IFontService fontService) : ILabelService
 	{
+		private const int MinimumLabelCountForSetupFiltering = 2;
+
 		protected ILogger<LabelService> Logger { get; set; } = logger;
 		public ILabelServiceConfiguration LabelServiceConfiguration { get; set; } = labelServiceConfiguration;
 		protected IFontService FontService { get; set; } = fontService;
@@ -111,7 +113,10 @@ namespace Labelary.Service
 				AnalyzeInfo analyzeInfo = analyzer.Analyze(filteredZpl);
 				LabelInfo[] labelInfos = this.FilterSetupOnlyLabels(analyzeInfo.LabelInfos);
 
-				this.Logger.LogDebug("ZPL analysis found {count} label(s).", analyzeInfo.LabelInfos.Length);
+				this.Logger.LogDebug(
+					"ZPL analysis found {analyzedCount} label(s); {renderableCount} label(s) will be rendered.",
+					analyzeInfo.LabelInfos.Length,
+					labelInfos.Length);
 
 				if (analyzeInfo.Errors != null && analyzeInfo.Errors.Length > 0)
 				{
@@ -231,13 +236,13 @@ namespace Labelary.Service
 
 		private LabelInfo[] FilterSetupOnlyLabels(LabelInfo[] labelInfos)
 		{
-			if (labelInfos.Length < 2)
+			if (labelInfos.Length < MinimumLabelCountForSetupFiltering)
 			{
 				return labelInfos;
 			}
 
 			LabelInfo[] printableLabels = labelInfos
-				.Where(static labelInfo => labelInfo.ZplElements.Any(static element => element is ZplPositionedElementBase || element is ZplReferenceGrid))
+				.Where(labelInfo => IsPrintableLabel(labelInfo))
 				.ToArray();
 
 			if (printableLabels.Length == 0 || printableLabels.Length == labelInfos.Length)
@@ -250,6 +255,12 @@ namespace Labelary.Service
 				labelInfos.Length - printableLabels.Length);
 
 			return printableLabels;
+		}
+
+		private static bool IsPrintableLabel(LabelInfo labelInfo)
+		{
+			// Positioned elements and reference grids correspond to visible output; setup-only commands such as ^CI (character encoding) do not.
+			return labelInfo.ZplElements.Any(element => element is ZplPositionedElementBase || element is ZplReferenceGrid);
 		}
 	}
 }
