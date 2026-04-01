@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using BinaryKits.Zpl.Label.Elements;
 using BinaryKits.Zpl.Viewer;
 using BinaryKits.Zpl.Viewer.ElementDrawers;
 using BinaryKits.Zpl.Viewer.Models;
@@ -30,6 +31,8 @@ namespace Labelary.Service
 {
 	public class LabelService(ILogger<LabelService> logger, ILabelServiceConfiguration labelServiceConfiguration, IFontService fontService) : ILabelService
 	{
+		private const int MinimumLabelCountForSetupFiltering = 2;
+
 		protected ILogger<LabelService> Logger { get; set; } = logger;
 		public ILabelServiceConfiguration LabelServiceConfiguration { get; set; } = labelServiceConfiguration;
 		protected IFontService FontService { get; set; } = fontService;
@@ -108,8 +111,12 @@ namespace Labelary.Service
 				//
 				ZplAnalyzer analyzer = new(this._printerStorage);
 				AnalyzeInfo analyzeInfo = analyzer.Analyze(filteredZpl);
+				LabelInfo[] labelInfos = this.FilterSetupOnlyLabels(analyzeInfo.LabelInfos);
 
-				this.Logger.LogDebug("ZPL analysis found {count} label(s).", analyzeInfo.LabelInfos.Length);
+				this.Logger.LogDebug(
+					"ZPL analysis found {analyzedCount} label(s); {renderableCount} label(s) will be rendered.",
+					analyzeInfo.LabelInfos.Length,
+					labelInfos.Length);
 
 				if (analyzeInfo.Errors != null && analyzeInfo.Errors.Length > 0)
 				{
@@ -133,14 +140,14 @@ namespace Labelary.Service
 				};
 
 				ZplElementDrawer drawer = new(this._printerStorage, drawerOptions);
-				int totalLabels = analyzeInfo.LabelInfos.Length;
+				int totalLabels = labelInfos.Length;
 
 				for (int i = 0; i < totalLabels; i++)
 				{
 					try
 					{
 						byte[] imageData = drawer.Draw(
-							analyzeInfo.LabelInfos[i].ZplElements,
+							labelInfos[i].ZplElements,
 							labelWidthMm,
 							labelHeightMm,
 							dpmm);
@@ -225,6 +232,35 @@ namespace Labelary.Service
 			}
 
 			return returnValue;
+		}
+
+		private LabelInfo[] FilterSetupOnlyLabels(LabelInfo[] labelInfos)
+		{
+			if (labelInfos.Length < MinimumLabelCountForSetupFiltering)
+			{
+				return labelInfos;
+			}
+
+			LabelInfo[] printableLabels = labelInfos
+				.Where(labelInfo => IsPrintableLabel(labelInfo))
+				.ToArray();
+
+			if (printableLabels.Length == 0 || printableLabels.Length == labelInfos.Length)
+			{
+				return labelInfos;
+			}
+
+			this.Logger.LogInformation(
+				"Skipping {count} setup-only label(s) from a multi-label ZPL payload.",
+				labelInfos.Length - printableLabels.Length);
+
+			return printableLabels;
+		}
+
+		private static bool IsPrintableLabel(LabelInfo labelInfo)
+		{
+			// Positioned elements and reference grids correspond to visible output; setup-only commands such as ^CI (character encoding) do not.
+			return labelInfo.ZplElements.Any(element => element is ZplPositionedElementBase || element is ZplReferenceGrid);
 		}
 	}
 }
