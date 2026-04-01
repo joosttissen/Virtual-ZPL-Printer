@@ -109,6 +109,26 @@ namespace Labelary.Service.Tests
 		}
 
 		[Fact]
+		public async Task GetLabelsAsync_SetupOnlyBlockBeforePrintableLabel_ReturnsOnlyPrintableLabel()
+		{
+			// Arrange - A setup-only label block can contain state changes but no printable elements.
+			string zpl = "^XA^CI27^XZ^XA^FT77,981^A0B,48,48^FH^CI28^FDPart# S4036^FS^CI27^XZ";
+			ILabelConfiguration config = CreateDefaultLabelConfig();
+
+			// Act
+			IEnumerable<IGetLabelResponse> results = await _labelService.GetLabelsAsync(config, zpl);
+			IGetLabelResponse[] labelResponses = results.ToArray();
+
+			// Assert
+			Assert.Single(labelResponses);
+			Assert.True(labelResponses[0].Result);
+			Assert.Equal(1, labelResponses[0].LabelCount);
+			Assert.Equal(0, labelResponses[0].LabelIndex);
+			Assert.NotNull(labelResponses[0].Label);
+			Assert.True(labelResponses[0].Label.Length > 0);
+		}
+
+		[Fact]
 		public async Task GetLabelAsync_SpecificIndex_ReturnsCorrectLabel()
 		{
 			// Arrange
